@@ -71,18 +71,19 @@ cv2.normalize(roi_hist, roi_hist, 0, 255, cv2.NORM_MINMAX)
 
 # Setup the termination criteria: either 10 iterations,
 # or move by less than 1 pixel
-term_crit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 1)
+term_crit = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 20, 1)
 
 cpt = 1
 while (1):
     ret, frame = cap.read()
     if ret == True:
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        
         # Backproject the model histogram roi_hist onto the
         # current image hsv, i.e. dst(x,y) = roi_hist(hsv(0,x,y))
         dst = cv2.calcBackProject([hsv], [0], roi_hist, [0, 180], 1)
 
-        # # Binarization of the Backprojecttion
+        # # # Binarization of the Backprojecttion
         ret, dst = cv2.threshold(dst, 127, 255, cv2.THRESH_BINARY)
 
         cv2.imshow("dst", dst)
@@ -91,6 +92,7 @@ while (1):
 
         # Draw a blue rectangle on the current image
         r, c, h, w = track_window
+
         frame_tracked = cv2.rectangle(frame, (r, c), (r + h, c + w), (255, 0, 0), 2)
         cv2.imshow('Sequence', frame_tracked)
 
@@ -100,12 +102,16 @@ while (1):
         elif k == ord('s'):
             cv2.imwrite('R_H_%04d.png' % cpt, dst)
             cv2.imwrite('Frame_%04d.png' % cpt, frame_tracked)
+
+        ## Update of ROI
+        roi = frame[c:c + w, r:r + h]
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv_roi, np.array((0., 30., 20.)), np.array((180., 255., 235.)))
+        roi_hist = cv2.calcHist([hsv_roi], [0], mask, [180], [0, 180])
+
         cpt += 1
     else:
         break
-
-
-
 
 cv2.destroyAllWindows()
 cap.release()
