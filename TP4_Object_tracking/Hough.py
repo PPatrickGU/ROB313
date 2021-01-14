@@ -12,6 +12,9 @@ from PIL import Image
 roi_defined = False
 
 def define_ROI(event, x, y, flags, param):
+    '''
+    Define the region of intetest
+    '''
     global r, c, w, h, roi_defined
     # if the left mouse button was clicked,
     # record the starting ROI coordinates
@@ -32,8 +35,8 @@ def gradient_orientation(img):
     '''
     Calculate the gradient orientation for edge point in the image
     '''
-    img1 = cv2.Sobel(img, -1, 1, 0)
-    img2 = cv2.Sobel(img, -1, 0, 1)
+    img1 = cv2.Sobel(img, cv2.CV_64F, 1, 0)
+    img2 = cv2.Sobel(img, cv2.CV_64F, 0, 1)
     orientation = np.arctan2(img2, img1)
     return orientation
 
@@ -41,15 +44,14 @@ def gradient_norme(img):
     '''
     Calculate the gradient norme for edge point in the image
     '''
-    img1 = cv2.Sobel(img, -1, 1, 0)
-    img2 = cv2.Sobel(img, -1, 0, 1)
-    norme = np.hypot(img1, img2) / 256
-    # norme = np.sqrt(img1 * img1 + img2 * img2)
+    img1 = cv2.Sobel(img, cv2.CV_64F, 1, 0)
+    img2 = cv2.Sobel(img, cv2.CV_64F, 0, 1)
+    norme = np.hypot(img1, img2)
     return norme
 
 def plot_orientation(frame, norme, orientation, orientation__):
     '''
-    plot the gradient orientation for edge point in the image
+    Plot the gradient orientation for edge point in the image
     '''
     fig = plt.figure(figsize=(12, 8))
 
@@ -73,15 +75,22 @@ def plot_orientation(frame, norme, orientation, orientation__):
     plt.show()
 
 def get_index_hough(norme, orientation_clone, th_min):
-    # norme_ =  np.float64(norme.copy())
-    norme_ = norme
-    index = np.where(norme_ < th_min)
-    index_hough = np.where((th_min < norme ))
+    '''
+    Get the index for hough vote (plot)
+    '''
+    index = np.where(norme < th_min)
     orientation_clone[0][index] = 245  # red
     orientation_clone[1][index] = 0
     orientation_clone[2][index] = 0
-    return orientation_clone, index_hough
+    return orientation_clone, index
 
+def get_index_hough2(norme, th_min):
+    '''
+    Get the index for hough vote (by changing the value to 0)
+    '''
+    norme_hough =  norme.copy()
+    norme_hough[norme_hough[:, :] < th_min] = 0
+    return norme_hough
 
 def build_r_table(img):
     '''
@@ -95,41 +104,42 @@ def build_r_table(img):
     gradient = gradient_orientation(edges) * 180 // np.pi
 
     r_table = defaultdict(list)
-    for (i, j), value in np.ndenumerate(edges):
+    for (i, j), value in np.ndenumerate(edges): #edge
         if value:
             r_table[gradient[i, j]].append((img_center[0] - i, img_center[1] - j))
     return r_table
 
-def matchTable(img, table, index):
+def matchTable(img, table):
     """
-    param:
+    Accumulator with searched votes
     """
     # matches the reference table with the given input
     # image for testing generalized Hough Transform
-    acc = np.zeros((img.shape[0]+50, img.shape[1]+50))  # acc array requires some extra space
+    acc = np.zeros((img.shape[0]+int(0.2*img.shape[0]), img.shape[1]+int(0.2*img.shape[0])))  # acc array requires some extra space
 
     gradient = gradient_orientation(img) * 180 // np.pi
 
-    for i in range(len(index[0])):
-        m, n = index[0][i], index[1][i]
-        if img[m, n] != 0:  # boundary point
-            theta = gradient[m, n]
-            vectors = table[theta]
-            for vector in vectors:
-                acc[vector[0]+m, vector[1]+n] += 1
+    for i in range(img.shape[0]):
+        for j in range(img.shape[1]):
+            if img[i, j] != 0:  # boundary point
+                theta = gradient[i, j]
+                vectors = table[theta]
+                for vector in vectors:
+                    acc[vector[0]+i, vector[1]+j] += 1
     return acc
 
 def findMax(acc):
+    """
+    Find the index of the maximum value
+    """
     ridx, cidx = np.unravel_index(acc.argmax(), acc.shape)
     return [acc[ridx, cidx], ridx, cidx]
 
 
-cap = cv2.VideoCapture('./Sequences/VOT-Ball.mp4')  #Antoine_Mug ./Sequences/VOT-Ball.mp4
+cap = cv2.VideoCapture('./Sequences/Antoine_Mug.mp4')  #Antoine_Mug ./Sequences/VOT-Ball.mp4
 # cap = cv2.VideoCapture(0)
 
 th_min = 60 # threshod min
-
-
 # take first frame of the video
 ret, frame = cap.read()
 # load the image, clone it, and setup the mouse callback function
@@ -153,7 +163,6 @@ while True:
     if key == ord("q"):
         break
 
-
 track_window = (r, c, h, w)
 
 # # set up the ROI for tracking
@@ -161,12 +170,14 @@ clone = cv2.cvtColor(frame.copy(), cv2.COLOR_BGR2GRAY)
 orientation = gradient_orientation(clone)
 norme = gradient_norme(clone)
 
-orientation_clone = np.float64([orientation.copy(), orientation.copy(), orientation.copy()])
+orientation_clone = np.asarray([orientation.copy(), orientation.copy(), orientation.copy()])
 orientation_, index_hough = get_index_hough(norme, orientation_clone, th_min)
+
+norme = get_index_hough2(norme, th_min)
 
 roi = norme[c:c + w, r:r + h]
 Rtable = build_r_table(roi)
-acc = matchTable(norme, Rtable, index_hough)
+acc = matchTable(norme, Rtable)
 
 # Setup the termination criteria: either 10 iterations,
 # or move by less than 1 pixel
@@ -179,6 +190,8 @@ track_window = ridx - h//2, cidx - w//2, h, w
 # Meanshift
 # ret, track_window = cv2.meanShift(acc, track_window, term_crit)
 
+# plot_orientation(frame, norme, orientation, orientation_)
+
 cpt = 1
 while (1):
     ret, frame = cap.read()
@@ -186,13 +199,14 @@ while (1):
         clone = cv2.cvtColor(frame.copy(), cv2.COLOR_BGR2GRAY)
         orientation = gradient_orientation(clone)
         norme = gradient_norme(clone)
-        orientation_clone = np.float64([orientation.copy(), orientation.copy(), orientation.copy()])
+        orientation_clone = np.asarray([orientation.copy(), orientation.copy(), orientation.copy()])
         orientation_, index_hough = get_index_hough(norme, orientation_clone, th_min)
+        norme = get_index_hough2(norme, th_min)
 
         ## Update of ROI
-        roi = norme[c:c + w, r:r + h]
-        Rtable = build_r_table(roi)
-        acc = matchTable(norme, Rtable, index_hough)
+        # roi = norme[c:c + w, r:r + h]
+        # Rtable = build_r_table(roi)
+        acc = matchTable(norme, Rtable)
 
         ## General Hough vote
         maxval, ridx, cidx = findMax(acc)
@@ -205,19 +219,16 @@ while (1):
         frame_tracked = cv2.rectangle(frame, (r, c), (r + h, c + w), (255, 0, 0), 2)
         cv2.imshow('Sequence', frame_tracked)
 
-
-
         k = cv2.waitKey(60) & 0xff
         if k == 27:
             break
         elif k == ord('s'):
             # cv2.imwrite('R_H_%04d.png' % cpt, dst)
-            # cv2.imwrite('Frame_%04d.png' % cpt, frame)
+            cv2.imwrite('Frame_%04d.png' % cpt, frame_tracked)
             plot_orientation(frame, norme, orientation, orientation_)
         cpt += 1
     else:
         break
-
 
 cv2.destroyAllWindows()
 cap.release()
