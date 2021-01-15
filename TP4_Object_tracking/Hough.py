@@ -208,6 +208,7 @@ while (1):
         # Rtable = build_r_table(roi)
         acc = matchTable(norme, Rtable)
 
+
         ## General Hough vote
         maxval, ridx, cidx = findMax(acc)
         track_window = ridx - h//2, cidx - w//2, h, w
@@ -225,6 +226,7 @@ while (1):
         elif k == ord('s'):
             # cv2.imwrite('R_H_%04d.png' % cpt, dst)
             cv2.imwrite('Frame_%04d.png' % cpt, frame_tracked)
+            cv2.imshow("Vote de Hough", acc)
             plot_orientation(frame, norme, orientation, orientation_)
         cpt += 1
     else:
